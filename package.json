@@ -1,0 +1,17 @@
+{
+    "name": "Grid.js",
+    "description": "A full-featured and modular data grid.",
+    "version": "0.1.0",
+    "homepage": "http://github.com/martianboy/gridjs",
+    "engines": {"node": ">= 0.6.0"},
+    "author": "Abbas Mashayekh",
+    "main": "src/Grid.js",
+    "repository": {
+        "type": "git",
+        "url": "http://github.com/martianboy/gridjs.git"
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "dryice": "0.4.10"
+    }
+}
