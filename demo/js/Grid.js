@@ -226,7 +226,7 @@ $.fn.extend({
 		}
 	});
 })(this);
-define('IRERP/Grid', ['require', 'exports', 'module' , 'IRERP/lib/shims', 'IRERP/lib/utils', 'IRERP/GridHeader', 'IRERP/GridPager', 'IRERP/GridTable'], function(require, exports, module) {
+define('IRERP/Grid', ['require', 'exports', 'module' , 'IRERP/lib/shims', 'IRERP/lib/utils', 'IRERP/GridHeader', 'IRERP/GridPager', 'IRERP/GridTable', 'IRERP/GridToolbar', 'IRERP/lib/backbone-events'], function(require, exports, module) {
 
 var $ = require('./lib/shims').$,
     _ = require('./lib/utils');
@@ -234,138 +234,169 @@ var $ = require('./lib/shims').$,
 var GridHeader = require('./GridHeader');
 var GridPager = require('./GridPager');
 var GridTable = require('./GridTable');
+var GridToolbar = require('./GridToolbar');
 
-var Grid = {
-    init: function(container, options) {
-        this._normalizeOptions(options);
+var EventEmitter = require('./lib/backbone-events');
 
-        this.$container = $(container);
-        this.$tableContainer = this.$container.children('.table-container');
-        this.$toolbar = this.$container.children('[role=toolbar]');
+var Grid = Object.create( EventEmitter );
 
-        this.name = this.$container.data('grid-name');
-        this.columns = options.columns || {};
+var $container, $tableContainer, $bodyContainer;
+var toolbar, header, body, pager;
 
-        // this.dataSource = Object.create( GridDataSource );
-        // this.dataSource.init(this.name, options.uri);
+Grid.init = function(container, options) {
+    options = this.options = normalizeOptions(options);
 
-        this.header = Object.create( GridHeader );
-        this.header.init(this.$tableContainer.find('.header-container'));
+    $container = $(container);
+    $tableContainer = $container.children('.table-container');
+    $bodyContainer = $tableContainer.find('.body-container');
 
-        this.body = Object.create( GridTable );
-        this.body.init(this.$tableContainer.find('table[role=grid] > tbody'));
+    mouseWheelSupport();
 
-        this.pager = Object.create( GridPager );
-        this.pager.init(this.$container.children('[role=navigation]'), options.totalPages);
+    this.name = $container.data('grid-name');
+    this.columns = options.columns || {};
 
-        this.body.on('rowHover', this._customPager, this);
+    toolbar = Object.create( GridToolbar );
+    toolbar.init($container.children('[role=toolbar]'));
+    toolbar.on('click.format', showFormatModal, this);
 
-        if (options.dataSource)
-            this._initDataSource(options.dataSource);
-    },
+    header = Object.create( GridHeader );
+    header.init($tableContainer.find('.header-container'));
 
-    _initDataSource: function(ds) {
-        this.dataSource = ds;
-        this.dataSource.on('refresh', this._refreshGrid, this);
+    body = Object.create( GridTable );
+    body.init($bodyContainer.find('table[role=grid] > tbody'));
 
-        if (this.header) {
-            this.header.on('order', this._columnOrderChanged, this);
-            this.header.on('filter', this.filter, this);
-        }
+    pager = Object.create( GridPager );
+    pager.init($container.children('[role=navigation]'), options.totalPages);
 
-        if (this.pager) {
-            this.pager.on('requestPage', this._requestPage, this);
-        }
-    },
+    body.on('rowHover', customPager, this);
 
-    refresh: function() {
-        this._requestPage(0);
-    },
+    if (options.dataSource) {
+	    this.dataSource = options.dataSource;
+	    this.dataSource.on('refresh', refreshGrid, this);
 
-    filter: function(filters) {
-        this.dataSource.setFilter(filters);
-        this.refresh();
-    },
+	    if (header) {
+	        header.on('order', columnOrderChanged, this);
+	        header.on('filter', this.filter, this);
+	    }
 
-    _normalizeOptions: function(options) {
-        options = options || {};
+	    if (pager)
+	        pager.on('requestPage', this.requestPage, this);
+	}
+}
 
-        if (_.has(options, 'DataColumns')) {
-            options.columns = _.indexBy(options.DataColumns, 'Name');
-            delete options.DataColumns;
-        }
-
-        if (_.has(options, 'Columns')) {
-            if (_.isEmpty(options.columns))
-                options.columns = _.indexBy(options.Columns, 'Name');
-
-            options.Columns.forEach(function(col) {
-                options.columns[col.Name].visible = true;
-            });
-
-            delete options.Columns;
-        }
-
-        this.options = options;
-    },
-
-    _showLoading: function() {
-        this.$container.addClass('loading');
-    },
-    _hideLoading: function() {
-        this.$container.removeClass('loading');
-    },
-
-    _refreshGrid: function(itemsHTML, state) {
-        this._hideLoading();
-
-        this.pager.reset(state.totalPages, state.currentPage);
-        this.body.setContents(itemsHTML);
-    },
-
-    _requestPage: function(page) {
-        this._showLoading();
-
-        this.dataSource.getPage(page).fail(function(e) {
-            setTimeout(function() {
-                this._hideLoading();
-            }.bind(this), 2000);
-        }.bind(this)).done(this._resetGridUI.bind(this));
-    },
-
-    _columnOrderChanged: function(columnName, order) {
-        this.dataSource.sort(columnName, order);
-        this.refresh();
-    },
-
-    _resetGridUI: function() {
-        var sort = this.dataSource.state.sort;
-
-        this.header.$headers.children().each(function(index, header) {
-            var $header = $(header);
-            var field = $header.data('name');
-            var order = sort[field];
-
-            if (order == null)
-                $header.removeClass('asc desc');
-            else
-                $header.addClass(order);
-        });
-        // Refresh UI, based on the final DataSource state
-    },
-
-    _customPager: function($row) {
-        if (this.$tableContainer.offset().top + this.$tableContainer.height() - $row.offset().top < 2 * $row.height())
-            this.pager.$el.fadeIn(100);
-        else
-            this.pager.$el.fadeOut(100);
-    }
+Grid.refresh = function() {
+	return this.requestPage(0);
 };
 
-return Grid;
+Grid.filter = function(filters) {
+    this.dataSource.setFilter(filters);
+    this.refresh();
+}
 
-});
-//     Underscore.js 1.6.0
+Grid.requestPage = function(page) {
+    showLoading();
+
+    this.dataSource.getPage(page).fail(function(e) {
+        setTimeout(function() {
+            hideLoading();
+        }, 2000);
+        throw e;
+    }).done(resetGridUI.bind(this, this.dataSource.state));
+}
+
+function normalizeOptions(options) {
+    options = options || {};
+
+    if (_.has(options, 'DataColumns')) {
+        options.columns = _.indexBy(options.DataColumns, 'Name');
+        delete options.DataColumns;
+    }
+
+    if (_.has(options, 'Columns')) {
+        if (_.isEmpty(options.columns))
+            options.columns = _.indexBy(options.Columns, 'Name');
+
+        options.Columns.forEach(function(col) {
+            options.columns[col.Name].visible = true;
+        });
+
+        delete options.Columns;
+    }
+
+    return options;
+}
+
+function mouseWheelSupport() {
+    $tableContainer.mousewheel(function(e) {
+        var scrollPosition = $tableContainer.scrollLeft();
+        if ((scrollPosition > 0 && e.deltaX * e.deltaFactor < 0) ||
+            (scrollPosition < $tableContainer.get(0).scrollWidth && e.deltaX * e.deltaFactor > 0)) {
+
+            $tableContainer.scrollLeft(scrollPosition + e.deltaX * e.deltaFactor);
+            e.preventDefault();
+        }
+    });
+
+    $bodyContainer.mousewheel(function(e) {
+        var scrollPosition = $bodyContainer.scrollTop();
+        if ((scrollPosition > 0 && e.deltaY * e.deltaFactor > 0) ||
+            (scrollPosition < $bodyContainer.get(0).scrollHeight && e.deltaY * e.deltaFactor < 0)) {
+
+            $bodyContainer.scrollTop(scrollPosition - e.deltaY * e.deltaFactor);
+            e.preventDefault();
+        }
+    });
+}
+
+function showLoading() {
+    $container.addClass('loading');
+}
+function hideLoading() {
+    $container.removeClass('loading');
+}
+
+function refreshGrid(itemsHTML, state) {
+    hideLoading();
+
+    pager.reset(state.totalPages, state.currentPage);
+    body.setContents(itemsHTML);
+}
+
+function columnOrderChanged(columnName, order) {
+    this.dataSource.sort(columnName, order);
+    this.refresh();
+}
+
+function resetGridUI(state) {
+    var sort = state.sort;
+
+    header.$el.children().each(function(index, header) {
+        var $header = $(header);
+        var field = $header.data('name');
+        var order = sort[field];
+
+        if (order == null)
+            $header.removeClass('asc desc');
+        else
+            $header.addClass(order);
+    });
+    // Refresh UI, based on the final DataSource state
+}
+
+function customPager($row) {
+    if ($tableContainer.offset().top + $tableContainer.height() - $row.offset().top < 2 * $row.height() ||
+        $row.next().length == 0)
+        pager.$el.fadeIn(100);
+    else
+        pager.$el.fadeOut(100);
+}
+
+function showFormatModal() {
+    //$('#myModal').modal('show');
+}
+
+return Grid;
+});//     Underscore.js 1.6.0
 //     http://underscorejs.org
 //     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
 //     Underscore may be freely distributed under the MIT license.
@@ -449,20 +480,22 @@ var EventEmitter = require('./lib/backbone-events');
  */
 var GridHeader = Object.create( EventEmitter );
 
+var $headersContainer, filters, trigger;
+
 GridHeader.init = function( header ) {
-    this.$container = $(header);
-    this.$headers = this.$container.children('.column-headers');
+    $headersContainer = (this.$el = $(header)).find('.column-headers');
 
-    this.filters = {};
+    $headersContainer.on('click', 'li > a.header', onHeaderClick);
+    $headersContainer.on('click', 'li > a.header-menu', onHeaderMenuClick);
 
-    this.$headers.on('click', 'li > a.header', this._onHeaderClick.bind(this));
-    this.$headers.on('click', 'li > a.header-menu', this._onHeaderMenuClick.bind(this));
+    $headersContainer.on('keyup', 'li.filter > input', onFilterKeyup);
+    $headersContainer.on('keypress', 'li.filter > input', onFilterKeypress);
 
-    this.$headers.on('keyup', 'li.filter > input', this._onFilterKeyup.bind(this));
-    this.$headers.on('keypress', 'li.filter > input', this._onFilterKeypress.bind(this));
+    filters = {};
+    trigger = this.trigger.bind(this);
 };
 
-GridHeader._onHeaderClick = function(e) {
+function onHeaderClick(e) {
     var col, $target = $(e.target);
 
     if ($(e.target).parent().hasClass('column-headers'))
@@ -477,76 +510,76 @@ GridHeader._onHeaderClick = function(e) {
     var colOrderClass = orderMap[(colOrder + 1) % 3];
 
     col.data('column-sort-order', (colOrder + 1) % 3);
-    col.attr('class', colOrderClass);
+    col.prop('class', colOrderClass);
 
-    this.trigger('order', colName, colOrderClass);
-};
+    trigger('order', colName, colOrderClass);
+}
 
-GridHeader._onHeaderMenuClick = function(e) {
+function onHeaderMenuClick(e) {
     var $header = $(e.target).parent();
 
     // TODO: This is temporary. Fix it.
     if ($header.hasClass('filter'))
-        this._hideFilter($header);
+        hideFilter($header);
     else
-        this._showFilter($header);
-};
+        showFilter($header);
+}
 
-GridHeader._onFilterKeyup = function(e) {
+function onFilterKeyup(e) {
     var key = e.which || e.keyCode;
 
     switch(key) {
     case 27:
-        this._hideFilter($(e.target).parent());
-        break;
-    }
-};
-
-GridHeader._onFilterKeypress = function(e) {
-    var key = e.which || e.keyCode;
-
-    switch(key) {
-    case 13:
-        this._enterFilter($(e.target).parent());
+        hideFilter($(e.target).parent());
         break;
     }
 }
 
-GridHeader._enterFilter = function($header) {
+function onFilterKeypress(e) {
+    var key = e.which || e.keyCode;
+
+    switch(key) {
+    case 13:
+        onEnterFilter($(e.target).parent());
+        break;
+    }
+}
+
+function onEnterFilter($header) {
     var $textbox = $header.children('input');
     var $headerTitle = $header.children('a.header');
 
     var fieldName = $header.data('name');
     var filter = $textbox.val();
 
-    if (filter != this.filters[fieldName]) {
+    if (filter != filters[fieldName]) {
         if (_.isEmpty(filter)) {
-            delete this.filters[fieldName];
+            delete filters[fieldName];
             $headerTitle.children('span').remove();
         } else {
-            this.filters[fieldName] = filter;
+            filters[fieldName] = filter;
             $headerTitle.children('span').remove();
             $headerTitle.append($('<span>' + filter + '</span>'));
         }
 
-        this.trigger('filter', this.filters);
+        trigger('filter', filters);
 
-        this._hideFilter($header);
+        hideFilter($header);
     }
-};
+}
 
-GridHeader._showFilter = function($header) {
+function showFilter($header) {
     $header.addClass('filter');
     $header.children('input').focus();
-};
-GridHeader._hideFilter = function($header) {
+}
+function hideFilter($header) {
     var $textbox = $header.children('input');
     var fieldName = $header.data('name');
 
-    $textbox.val(this.filters[fieldName]);
+    $textbox.val(filters[fieldName]);
 
     $header.removeClass('filter');
-};
+}
 
 //     if (e.which == 13) {
 //         var filters = {};
@@ -777,7 +810,7 @@ GridPager.init = function(pager, totalPages) {
 
     this.reset(totalPages || 0);
 
-    this.$el.on('click', 'button[rel]', this._navButtonsClick.bind(this));
+    this.$el.on('click', 'button[rel]', navButtonsClick.bind(this));
 };
 GridPager.reset = function(totalPages, currentPage) {
     this.totalPages = totalPages;
@@ -787,7 +820,7 @@ GridPager.reset = function(totalPages, currentPage) {
     this.$el.find('.current-page').text(this.currentPage + 1); // + ' / ' + this.totalPages);
 };
 
-GridPager._navButtonsClick = function(e) {
+function navButtonsClick(e) {
     var rel = $(e.target).attr('rel');
     var page = 0;
 
@@ -798,7 +831,7 @@ GridPager._navButtonsClick = function(e) {
         case 'last': page = this.totalPages - 1; break;
     }
     this.trigger('requestPage', page);
-};
+}
 
 return GridPager;
 });
@@ -813,101 +846,215 @@ var EventEmitter = require('./lib/backbone-events');
 /****************************************************************************
  * View manager for Grid's main table body section
  */
+
+var $tableContainer, $bodyContainer, $rowsContainer, $activeRow, trigger;
+
 var GridTable = Object.create( EventEmitter, {
     width: {
-        get: function() { return 0; }
+        get: function() { return $rowsContainer.width(); }
     },
     height: {
-        get: function() { return 0; }
+        get: function() { return $rowsContainer.height(); }
+    },
+    itemsInViewport: {
+        get: itemsInViewport
     }
 });
 
 GridTable.init = function(tbody, totalPages) {
-    this.$el = $(tbody);
-    this.$el.prop('tabindex', '0');
+    $rowsContainer = this.el = $(tbody);
+    $rowsContainer.prop('tabindex', '0');
 
-    this.$activeRow = null;
+    $tableContainer = $rowsContainer.parents('.table-container');
+    $bodyContainer = $rowsContainer.parents('.body-container');
 
-    this.$el.on('mousedown', 'tr', this._rowMouseDown.bind(this));
-    this.$el.keydown(this._keydown.bind(this));
+    $activeRow = null;
 
-    this.$el.on('mouseenter', 'tr', this._rowMouseEnter.bind(this));
+    $rowsContainer.on('mousedown', 'tr', rowMouseDown);
+    $rowsContainer.keydown(keydown);
+    $rowsContainer.keypress(keypress);
+    $rowsContainer.keyup(keyup);
+
+    $rowsContainer.on('mouseenter', 'tr', rowMouseEnter);
+
+    trigger = this.trigger.bind(this);
 };
 
 GridTable.setContents = function(html) {
-    this.$el.html(html);
-    this.$activeRow = null;
+    $rowsContainer.html(html);
+    $activeRow = null;
 };
 
-GridTable._rowMouseEnter = function(e) {
-    this.trigger('rowHover', $(e.target).parent());
-};
+function itemsInViewport() {
+    var rowHeight = $rowsContainer.children().first().height();
+    var containerHeight = $bodyContainer.height();
 
-GridTable._rowMouseDown = function(e) {
-    this._activateRow($(e.target).parent());
-};
+    return Math.floor(containerHeight / rowHeight);
+}
 
-GridTable._keydown = function(e) {
+function rowMouseEnter(e) {
+    trigger('rowHover', $(e.target).parent());
+}
+
+function rowMouseDown(e) {
+    activateRow($(e.target).parents('tr'));
+}
+
+function keydown(e) {
     var key = (e.which || e.keyCode);
 
     switch(key) {
+    case 33:
+    case 34:
+    case 35:
+    case 36:
     case 38:
     case 40:
-        this._keyboardNav(key);
+        keyboardNav(key);
         e.preventDefault();
 
+        break;
+    case 37:
+    case 39:
+        keyboardScroll(key);
         break;
     }
 };
 
-GridTable._keyboardNav = function(key) {
-    var $row;
+function keypress(e) {
+    var key = e.which || e.keyCode;
 
-    if (key == 40)
-        if (this.$activeRow)
-            $row = this.$activeRow.next();
-        else
-            $row = this.$el.children('tr:first');
+    // console.log(key);
+}
+function keyup(e) {
+    var key = e.which || e.keyCode;
+
+    // console.log(key);
+}
+
+function keyboardScroll(key) {
+    var scrollPosition = $tableContainer.scrollLeft(),
+        scrollWidth = $tableContainer.get(0).scrollWidth;
+
+    switch(key){
+    case 37:
+        if (scrollPosition > 0)
+            $tableContainer.scrollLeft(scrollPosition - 20);
+        break;
+    case 39:
+        if (scrollPosition < scrollWidth)
+            $tableContainer.scrollLeft(scrollPosition + 20);
+        break;
+    }
+}
+
+function keyboardNav(key) {
+    var $row, $rows = $rowsContainer.children();
+    if ($rows.length == 0) return;
+
+    var index = $rows.index($activeRow);
+
+    if ($activeRow)
+        switch(key) {
+        case 33:
+            $row = $($rows.get(Math.max(0, index - itemsInViewport())));
+            break;
+        case 34:
+            $row = $($rows.get(Math.min(index + itemsInViewport(), $rows.length - 1)));
+            break;
+        case 35:
+            $row = $rows.last();
+            break;
+        case 36:
+            $row = $rows.first();
+            break;
+        case 37:
+            break;
+        case 38:
+            $row = $activeRow.prev();
+            break;
+        case 39:
+            //.scrollLeft()
+        case 40:
+            $row = $activeRow.next();
+            break;
+        }
     else
-        if (this.$activeRow)
-            $row = this.$activeRow.prev();
-        else
-            $row = this.$el.children('tr:last');
+        switch(key) {
+        case 33:
+        case 35:
+        case 38:
+            $row = $rows.last();
+            break;
+        case 34:
+        case 36:
+        case 40:
+            $row = $rows.first();
+            break;
+        }
 
-    this._activateRow($row);
-};
+    activateRow($row);
+}
 
-GridTable._scrollIntoView = function($row) {
-    var $container = this.$el.parents('.body-container');
+function scrollIntoView($row) {
+    var container = $bodyContainer.get(0),
+        row = $row.get(0);
 
-    var docViewTop = $container.scrollTop();
-    var docViewBottom = docViewTop + $container.height();
+    var docViewTop = container.scrollTop;
+    var docViewBottom = docViewTop + container.offsetHeight;
 
-    var elemTop = $row.get(0).offsetTop;
-    var elemBottom = elemTop + $row.height();
+    var elemTop = row.offsetTop;
+    var elemBottom = elemTop + row.offsetHeight;
 
     if (elemTop < docViewTop)
-        $row.get(0).scrollIntoView(true);
+        row.scrollIntoView(true);
     else if (elemBottom > docViewBottom)
-        $row.get(0).scrollIntoView(false);
-};
+        row.scrollIntoView(false);
+}
 
-GridTable._activateRow = function($row) {
+function activateRow($row) {
     if ($row.length == 0) return;
 
-    if (this.$activeRow)
-        if (this.$activeRow.get(0) == $row.get(0))
+    if ($activeRow)
+        if ($activeRow.get(0) == $row.get(0))
             return;
         else
-            this.$activeRow.removeClass('active');
+            $activeRow.removeClass('active');
 
-    this.trigger('rowSelected', $row);
+    trigger('rowSelected', $row);
 
-    this.$activeRow = $row;
-    this.$activeRow.addClass('active');
+    $activeRow = $row;
+    $activeRow.addClass('active');
 
-    this._scrollIntoView($row);
-};
+    scrollIntoView($row);
+}
 
 return GridTable;
+});
+define('IRERP/GridToolbar', ['require', 'exports', 'module' , 'IRERP/lib/shims', 'IRERP/lib/utils', 'IRERP/lib/backbone-events'], function(require, exports, module) {
+
+var $ = require('./lib/shims').$;
+var _ = require('./lib/utils');
+
+var EventEmitter = require('./lib/backbone-events');
+
+"use strict";
+
+/****************************************************************************
+ * View manager for Grid's THEAD section
+ */
+var GridToolbar = Object.create( EventEmitter );
+
+GridToolbar.init = function( el ) {
+    this.$el = $(el);
+
+    this.$el.on('click', 'button', onButtonClick.bind(this));
+};
+
+function onButtonClick(e) {
+	this.trigger('click.' + $(e.target).data('name'));
+}
+
+return GridToolbar;
+
 });
