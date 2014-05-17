@@ -8,9 +8,9 @@ var BUILD_DIR = HOME_DIR + '/build';
 
 var DEPENDENCIES = ['jquery', 'underscore'];
 
-/******************************************************************************
- * Borrowed from https://github.com/ajaxorg/ace/blob/efea2a755b1f4073fc2fcffa0179362ab40a83c3/Makefile.dryice.js
- *****************************************************************************/
+/*****************************************************************************************************************
+ * Borrowed from https://github.com/ajaxorg/ace/blob/efea2a755b1f4073fc2fcffa0179362ab40a83c3/Makefile.dryice.js *
+ *****************************************************************************************************************/
 var CommonJsProject = copy.createCommonJsProject({roots:[]}).constructor;
 CommonJsProject.prototype.getCurrentModules = function() {
     function isDep(child, parent) {
@@ -52,14 +52,13 @@ function removeModuleDefines(input, source) {
     module = module.replace(/\.js$/, '').split('/');
     module = module[module.length - 1];
 
-    var varModuleRegexp = new RegExp("return " + module + ";\\s*\\}\\);\\s*$", 'm');
-
-    if (varModuleRegexp.test(input)) {
-        input = input.replace(/define\(\[[^\]]+\]\s*,\s*function\([^\)]*\)\s*\{/,
-                                "var " + module + " = (function() {");
-        return input.replace(varModuleRegexp, 'return ' + module + ';\n})();\n\n');
+    var varModuleEnd = new RegExp("return " + module + ";\\s*\\}\\);\\s*$", 'm');
+    var varModuleDefine = /define\(\[[^\]]+\]\s*,\s*function\([^\)]*\)\s*\{/;
+    if (varModuleEnd.test(input)) {
+        input = input.replace(varModuleDefine, "var " + module + " = (function() {");
+        return input.replace(varModuleEnd, 'return ' + module + ';\n})();\n\n');
     } else {
-        input = input.replace(/define\(\[[^\]]+\]\s*,\s*function\([^\)]*\)\s*\{/, '');
+        input = input.replace(varModuleDefine, '');
         return input.replace(/\}\)\s*;\s*$/m, '');
     }
 };
@@ -85,10 +84,6 @@ function buildGrid() {
         roots: [TARGET_DIR],
         ignores: ['jquery', 'underscore', 'q']
     });
-    // copy({
-    //     source: TARGET_DIR + '/IRERP/lib/mini_require.js',
-    //     dest: irerpGrid
-    // });
     copy({
         source: {
             project: irerpGridProject,
@@ -102,27 +97,6 @@ function buildGrid() {
         filter: [removeUseStrict, wrapGreed],
         dest: BUILD_DIR + '/Greed.js'
     });
-
-    // var modules = irerpGridProject.getCurrentModules()
-    // .map(function(m) {
-    //     var p, r = {};
-    //     var deps = Object.keys(m.deps);
-
-    //     DEPENDENCIES.forEach(function(dep) {
-    //         if ((p = deps.indexOf(dep)) > -1)
-    //             deps.splice(p, 1);
-    //     })
-    //     r[m.path.replace('/\.js$/', '')] = deps;
-    //     return r;
-    // });
-    // var modules = {};
-    // irerpGridProject.getCurrentModules().forEach(function(m) {
-    //     modules[m.path.replace('/\.js$/', '')] = Object.keys(m.deps);
-    // });
-
-    // console.log();
-    // modules.forEach(function(m) { console.log(m) });
-    // console.log();
 }
 
 function main(args) {
