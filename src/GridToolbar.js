@@ -1,9 +1,7 @@
-define(function(require, exports, module) {
-
-var $ = require('./lib/shims').$;
-var _ = require('./lib/utils');
-
-var EventEmitter = require('./lib/backbone-events');
+define(['jquery',
+        'underscore',
+        './lib/EventEmitter'],
+function($, _, EventEmitter) {
 
 "use strict";
 

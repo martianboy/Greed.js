@@ -1,4 +1,4 @@
-define(function(require, exports, module) {
+define(['underscore'], function(_) {
 "use strict";
 
   // Create local references to array methods we'll want to use later.
@@ -6,8 +6,6 @@ define(function(require, exports, module) {
   var push = array.push;
   var slice = array.slice;
   var splice = array.splice;
-
-  var _ = require('./utils');
 
   // Returns a function that will be executed at most one time, no matter how
   // often you call it. Useful for lazy initialization.
@@ -35,7 +33,7 @@ define(function(require, exports, module) {
   //     object.on('expand', function(){ alert('expanded'); });
   //     object.trigger('expand');
   //
-  var Events = {
+  var EventEmitter = {
 
     // Bind an event to a `callback` function. Passing `"all"` will bind
     // the callback to all events fired.
@@ -101,9 +99,9 @@ define(function(require, exports, module) {
       var args = slice.call(arguments, 1);
       if (!eventsApi(this, 'trigger', name, args)) return this;
       var events = this._events[name];
-      var allEvents = this._events.all;
-      if (events) triggerEvents(events, args);
-      if (allEvents) triggerEvents(allEvents, arguments);
+      var allEventEmitter = this._events.all;
+      if (events) triggerEventEmitter(events, args);
+      if (allEventEmitter) triggerEventEmitter(allEventEmitter, arguments);
       return this;
     },
 
@@ -128,7 +126,7 @@ define(function(require, exports, module) {
   // Regular expression used to split event strings.
   var eventSplitter = /\s+/;
 
-  // Implement fancy features of the Events API such as multiple event
+  // Implement fancy features of the EventEmitter API such as multiple event
   // names `"change blur"` and jQuery-style event maps `{change: action}`
   // in terms of the existing API.
   var eventsApi = function(obj, action, name, rest) {
@@ -157,7 +155,7 @@ define(function(require, exports, module) {
   // A difficult-to-believe, but optimized internal dispatch function for
   // triggering events. Tries to keep the usual cases speedy (most internal
   // Backbone events have 3 arguments).
-  var triggerEvents = function(events, args) {
+  var triggerEventEmitter = function(events, args) {
     var ev, i = -1, l = events.length, a1 = args[0], a2 = args[1], a3 = args[2];
     switch (args.length) {
       case 0: while (++i < l) (ev = events[i]).callback.call(ev.ctx); return;
@@ -174,7 +172,7 @@ define(function(require, exports, module) {
   // listen to an event in another object ... keeping track of what it's
   // listening to.
   _.each(listenMethods, function(implementation, method) {
-    Events[method] = function(obj, name, callback) {
+    EventEmitter[method] = function(obj, name, callback) {
       var listeningTo = this._listeningTo || (this._listeningTo = {});
       var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
       listeningTo[id] = obj;
@@ -185,8 +183,8 @@ define(function(require, exports, module) {
   });
 
   // Aliases for backwards compatibility.
-  Events.bind   = Events.on;
-  Events.unbind = Events.off;
+  EventEmitter.bind   = EventEmitter.on;
+  EventEmitter.unbind = EventEmitter.off;
 
-  return Events;
+  return EventEmitter;
 });

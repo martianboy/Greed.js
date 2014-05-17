@@ -1,9 +1,7 @@
-define(function(require, exports, module) {
-
-var $ = require('./lib/shims').$;
-var _ = require('./lib/utils');
-
-var EventEmitter = require('./lib/backbone-events');
+define(['jquery',
+        'underscore',
+        './lib/EventEmitter'],
+function($, _, EventEmitter) {
 
 "use strict";
 
@@ -12,7 +10,7 @@ var EventEmitter = require('./lib/backbone-events');
  */
 var GridHeader = Object.create( EventEmitter );
 
-var $headersContainer, filters, trigger;
+var $headersContainer, filters = {}, trigger;
 
 GridHeader.init = function( header ) {
     $headersContainer = (this.$el = $(header)).find('.column-headers');
@@ -23,8 +21,20 @@ GridHeader.init = function( header ) {
     $headersContainer.on('keyup', 'li.filter > input', onFilterKeyup);
     $headersContainer.on('keypress', 'li.filter > input', onFilterKeypress);
 
-    filters = {};
     trigger = this.trigger.bind(this);
+};
+
+GridHeader.resetSortOrders = function(sort) {
+    $headersContainer.children().each(function(index, header) {
+        var $header = $(header);
+        var field = $header.data('name');
+        var order = sort[field];
+
+        if (order == null)
+            $header.removeClass('asc desc');
+        else
+            $header.addClass(order);
+    });
 };
 
 function onHeaderClick(e) {
@@ -95,9 +105,9 @@ function onEnterFilter($header) {
         }
 
         trigger('filter', filters);
-
-        hideFilter($header);
     }
+
+    hideFilter($header);
 }
 
 function showFilter($header) {

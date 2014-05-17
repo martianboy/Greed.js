@@ -2,10 +2,10 @@
 
 build:
 	./Makefile.dryice.js
-	cp build/Grid.js demo/js/
+	cp build/Greed.js demo/js/
 
 clean:
 	rm -rf build
-	rm demo/js/Grid.js
+	rm demo/js/Greed.js
 
 dist: clean build

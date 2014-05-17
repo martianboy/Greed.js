@@ -1,35 +1,29 @@
-define(function(require, exports, module) {
+define(['jquery',
+        'underscore',
+        './lib/EventEmitter',
+        './GridHeader',
+        './GridPager',
+        './GridTable',
+        './GridToolbar'],
+function($, _, EventEmitter, GridHeader, GridPager, GridTable, GridToolbar) {
 
-var $ = require('./lib/shims').$,
-    _ = require('./lib/utils');
-
-var GridHeader = require('./GridHeader');
-var GridPager = require('./GridPager');
-var GridTable = require('./GridTable');
-var GridToolbar = require('./GridToolbar');
-
-var EventEmitter = require('./lib/backbone-events');
-
-var Grid = Object.create( EventEmitter );
+var Grid = Object.create( EventTarget );
 
 var $container, $tableContainer, $bodyContainer;
-var toolbar, header, body, pager;
+var toolbar, header, body, pager, ds;
 
 Grid.init = function(container, options) {
-    options = this.options = normalizeOptions(options);
+    options = normalizeOptions(options);
 
-    $container = $(container);
+    $container = this.$el = $(container);
     $tableContainer = $container.children('.table-container');
     $bodyContainer = $tableContainer.find('.body-container');
 
     mouseWheelSupport();
 
-    this.name = $container.data('grid-name');
-    this.columns = options.columns || {};
-
     toolbar = Object.create( GridToolbar );
     toolbar.init($container.children('[role=toolbar]'));
-    toolbar.on('click.format', showFormatModal, this);
+    toolbar.on('click.format', showFormatModal);
 
     header = Object.create( GridHeader );
     header.init($tableContainer.find('.header-container'));
@@ -40,41 +34,21 @@ Grid.init = function(container, options) {
     pager = Object.create( GridPager );
     pager.init($container.children('[role=navigation]'), options.totalPages);
 
-    body.on('rowHover', customPager, this);
+    body.on('rowHover', customPager);
 
     if (options.dataSource) {
-	    this.dataSource = options.dataSource;
-	    this.dataSource.on('refresh', refreshGrid, this);
+	    ds = options.dataSource;
 
 	    if (header) {
-	        header.on('order', columnOrderChanged, this);
-	        header.on('filter', this.filter, this);
+	        header.on('order', onHeaderSort);
+	        header.on('filter', onHeaderFilter);
 	    }
 
 	    if (pager)
-	        pager.on('requestPage', this.requestPage, this);
+	        pager.on('requestPage', onRequestPage);
 	}
 }
-
-Grid.refresh = function() {
-	return this.requestPage(0);
-};
-
-Grid.filter = function(filters) {
-    this.dataSource.setFilter(filters);
-    this.refresh();
-}
-
-Grid.requestPage = function(page) {
-    showLoading();
-
-    this.dataSource.getPage(page).fail(function(e) {
-        setTimeout(function() {
-            hideLoading();
-        }, 2000);
-        throw e;
-    }).done(resetGridUI.bind(this, this.dataSource.state));
-}
+Grid.refresh = refresh;
 
 function normalizeOptions(options) {
     options = options || {};
@@ -127,32 +101,43 @@ function hideLoading() {
     $container.removeClass('loading');
 }
 
-function refreshGrid(itemsHTML, state) {
+function refresh() {
+    showLoading();
+
+    return ds.refresh()
+        .then(resetGridUI)
+        .fail(function(e) {
+            setTimeout(function() {
+                hideLoading();
+            }, 2000);
+            throw e;
+        })
+        .done();
+}
+
+function onHeaderSort(name, order) {
+    ds.sortBy(name, order);
+    refresh();
+}
+
+function onHeaderFilter(filters) {
+    ds.filter = filters;
+    refresh();
+}
+
+function onRequestPage(page) {
+    ds.page = page;
+    refresh();
+}
+
+// Refresh UI, based on the final DataSource state
+function resetGridUI(result) {
     hideLoading();
 
-    pager.reset(state.totalPages, state.currentPage);
-    body.setContents(itemsHTML);
-}
+    body.setContents(result.html);
 
-function columnOrderChanged(columnName, order) {
-    this.dataSource.sort(columnName, order);
-    this.refresh();
-}
-
-function resetGridUI(state) {
-    var sort = state.sort;
-
-    header.$el.children().each(function(index, header) {
-        var $header = $(header);
-        var field = $header.data('name');
-        var order = sort[field];
-
-        if (order == null)
-            $header.removeClass('asc desc');
-        else
-            $header.addClass(order);
-    });
-    // Refresh UI, based on the final DataSource state
+    pager.reset(result.state.totalPages, result.state.currentPage);
+    header.resetSortOrders(result.state.sort);
 }
 
 function customPager($row) {
